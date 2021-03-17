@@ -24,8 +24,7 @@ const codeStyles = {
   borderRadius: 4,
 }
 
-// markup
-const NotFoundPage = () => {
+export default function NotFoundPage () {
   return (
     <main style={pageStyles}>
       <title>Not found</title>
@@ -50,5 +49,3 @@ const NotFoundPage = () => {
     </main>
   )
 }
-
-export default NotFoundPage

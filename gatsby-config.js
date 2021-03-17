@@ -2,5 +2,5 @@ module.exports = {
   siteMetadata: {
     title: "xstate-shopify",
   },
-  plugins: [],
+  plugins: ['gatsby-plugin-postcss'],
 };
