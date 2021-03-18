@@ -15,6 +15,15 @@ const initCart = {
   id: null
 }
 
+const persist = (id) => {
+  const storedId = localStorage.getItem(CART_LS_KEY)
+
+  if (id !== storedId) {
+    console.log(`ELLO`)
+    localStorage.setItem(CART_LS_KEY, id)
+  }
+}
+
 const cartMachine = Machine(
   {
     id: "cart",
@@ -22,7 +31,8 @@ const cartMachine = Machine(
     context: {
       cart: initCart,
       retries: 0,
-      productModals: undefined
+      hasDonation: false,
+      checkoutUrl: undefined
     },
     states: {
       checkingForCartId: {
@@ -44,7 +54,7 @@ const cartMachine = Machine(
         on: {
           CART_LOADED: {
             target: "idle",
-            actions: ["saveCart"]
+            actions: ["saveCart", "saveCartMeta"]
           },
           CART_NOT_LOADED: [
             {
@@ -68,7 +78,7 @@ const cartMachine = Machine(
           src: "creatingCartId",
           onDone: {
             target: "idle",
-            actions: ["saveCartId"]
+            actions: ["saveCartMeta"]
           },
           onError: [
             {
@@ -88,6 +98,12 @@ const cartMachine = Machine(
       },
       idle: {
         on: {
+          BLAH: {
+            actions: (ctx, event) => {
+              console.log(`ctx`, ctx)
+              console.log(`event`, event)
+            }
+          },
           ADD_LINE_ITEM: "addingLineItem",
           SAVE_CART: {
             target: "idle",
@@ -128,9 +144,10 @@ const cartMachine = Machine(
       addLineItem: (context, event) => async (cb) => {
         const cartId = context?.cart?.id
         const variantId = event?.variantId
+        const customAttributes = event?.customAttributes
 
         try {
-          const cart = await addLineItem(cartId, variantId)
+          const cart = await addLineItem(cartId, variantId, customAttributes)
           if(cart.invalidId) {
             alert("ITEM INVALID")
             cb("LINE_ITEM_INVALID")
@@ -139,6 +156,7 @@ const cartMachine = Machine(
           alert("ITEM ADDED")
           cb({ type: "LINE_ITEM_ADDED",  data: cart })
         } catch (e) {
+          console.log(`E: `, e)
           alert("ITEM NOT ADDED")
           cb({ type: "LINE_ITEM_NOT_ADDED",  data: e })
         } 
@@ -156,15 +174,15 @@ const cartMachine = Machine(
         try {
           const checkout = await createCheckout()
 
-          if(!checkout?.id) throw new Error(`Something went wrong creating a checkout please try again`)
+          if(!checkout?.id || !checkout?.webUrl) throw new Error(`Something went wrong creating a checkout please try again`)
 
-          return checkout?.id
+          return checkout
         } catch (e) {
           throw new Error(e)
         }
       },
-      loadingCartFromShopify: (context, event) => async (cb) => {
-        const cartId = context.cart.id
+      loadingCartFromShopify: (_, event) => async (cb) => {
+        const cartId = event.data 
 
         try {
           if (cartId) {
@@ -188,32 +206,68 @@ const cartMachine = Machine(
      },
     actions: {
       saveCartId: assign((ctx, event) => {
-        const cartId = event.data
+        const updatedCtx = {}
+        const id = event.data
 
-        if (cartId) {
-          localStorage.setItem(CART_LS_KEY, cartId)
-        }
+        persist(id)
 
-        return {
-          cart: {
+        if(!ctx.cart.id) {
+          updatedCtx.cart = {
             ...ctx.cart,
-            id: cartId
+            id
           }
         }
+        return updatedCtx
       }),
-      saveCart: assign((_, event) => {
+      saveCartMeta: assign((ctx, event) => {
+        const updatedCtx = {}
+        const checkout = event.data
+        const { id, webUrl } = checkout
+
+        if(!ctx.cart.id) {
+          updatedCtx.cart = {
+            ...ctx.cart,
+            id
+          }
+        }
+        if(!ctx.checkoutUrl) {
+          updatedCtx.checkoutUrl = webUrl
+        }
+
+        persist(id)
+
+        return updatedCtx
+      }),
+      saveCart: assign((context, event) => {
         const cart = event.data
 
-        return {
-          cart: {
-            id: cart.id,
-            lineItems: cart.lineItems.map((lineItem) => ({
-              ...lineItem,
-              ref: spawn(lineItemMachine(lineItem), lineItem.id)
-            })),
-            subtotal: cart.subtotalPrice
+        const lineItems = cart.lineItems.map((lineItem) => {
+          let updatedLineItem = { ...lineItem }
+          const { customAttributes } = lineItem
+
+          // attach custom attributes to the product
+          customAttributes.forEach(({ attrs }) => {
+            const { key, value } = attrs
+           
+            updatedLineItem[key.value] = value.value
+          })
+          
+          return {
+            ...updatedLineItem,
+            ref: spawn(lineItemMachine({ ...updatedLineItem, cartId: cart.id || context.cart.id }), lineItem.id)
           }
+        })
+
+        const updatedContext = {
+          cart: {
+            ...context.cart,
+            lineItems,
+            subtotal: cart.subtotalPrice,
+          },
+          hasDonation: !!lineItems.find(({ productType }) => productType === "donation")
         }
+
+        return updatedContext
       }),
       increaseRetries: assign((context) => {
         return {

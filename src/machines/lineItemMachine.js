@@ -11,16 +11,20 @@ import {
 import modalMachine from "./modalMachine"
 
 
-const lineItemMachine = ({ id, title, variant, quantity, cart }) =>  Machine(
+const lineItemMachine = ({ 
+  id, title, variant, 
+  quantity, cartId, productType,
+  author, avaliableQty, backorder,
+  preorder, format 
+}) =>  Machine(
   {
     id: "lineItem",
     initial: "idle",
     context: {
-      id,
-      title,
-      variant,
-      quantity,
-      retries: 0,
+      author, avaliableQty, backorder,
+      preorder, format, id,
+      title, variant, quantity,
+      retries: 0, cartId, productType,
       modal: {
         isOpen: false,
         ref: undefined
@@ -30,29 +34,22 @@ const lineItemMachine = ({ id, title, variant, quantity, cart }) =>  Machine(
       idle: {
         on: {
           CHANGE_QTY_LINE_ITEM: "changingLineItemQty",
-          REMOVE_LINE_ITEM: {
-            actions: ((ctx, eve) => {
-              console.log(`CTX: `, ctx)
-              console.log(`Eve: `, eve)
-
-              return ctx
-            })
-          },
+          REMOVE_LINE_ITEM: "loadingModal",
         }
       },
       loadingModal: {
         entry: assign({
-          modal: {
+          modal: () => ({
             isOpen: true,
-            ref: (ctx) => spawn(modalMachine, `modalMachine: ${ctx.id}`)
-          }
+            ref: spawn(modalMachine)
+          })
         }),
         on: {
-          REMOVE: {
+          REMOVE_ITEM: {
             target: "removingLineItem",
             actions: ["closeModal"]
           },
-          CANCEL: {
+          CANCEL_MODAL: {
             target: "idle",
             actions: ["closeModal"]
           }
@@ -117,25 +114,28 @@ const lineItemMachine = ({ id, title, variant, quantity, cart }) =>  Machine(
   },
   {
     actions: {
-      closeModal: assign({ 
-        modal: (ctx) => ({ ...ctx.modal, isOpen: false })
+      closeModal: assign(() => {
+        return { 
+          modal: (ctx) => ({ ...ctx.modal, isOpen: false })
+        }
       }),
       increaseRetries: assign({ retries: (ctx) => (ctx.retries += 1) }),
       clearRetries: assign({ retries: 0 }),
-      saveCart: sendParent((_, event) => ({
-        type: "SAVE_CART",
-        cart: event.data
-      }))
+      saveCart: sendParent((_, event) => {
+        console.log(`SAVING CART: `, event)
+        return  {
+          data: event.data,
+          type: 'SAVE_CART'
+        }
+      })
     },
     guards: {
       canRetry: (context) => context.retries < 1 // retry 3 times
     },
     services: {
       removeLineItem: (context) => async (cb) => {
-        const cartId = cart?.id
-
         try {
-          const cart = await removeLineItem(cartId, context.id)
+          const cart = await removeLineItem(context.cartId, context.id)
 
           if(cart.invalidId) {
             alert("ITEM INVALID")
@@ -145,15 +145,15 @@ const lineItemMachine = ({ id, title, variant, quantity, cart }) =>  Machine(
           alert("ITEM REMOVED")
           cb({ type:"LINE_ITEM_REMOVED", data: cart })
         } catch (e) {
+          console.log(`E: `, e)
           cb("LINE_ITEM_NOT_REMOVED")
         } 
       }, 
       changeLineItemQty: (context, event) => async (cb) => {
-        const cartId = cart?.id
         const quantity = event?.quantity
 
         try {
-          const cart = await updateLineItem(cartId, { id: context.id, quantity })
+          const cart = await updateLineItem(context.cartId, { id: context.id, quantity })
 
           if(cart.invalidId) {
             alert("ITEM INVALID")
@@ -163,7 +163,7 @@ const lineItemMachine = ({ id, title, variant, quantity, cart }) =>  Machine(
           alert("ITEM UPDATED")
           cb({ type: "LINE_ITEM_UPDATED", data: cart })
         } catch (e) {
-          alert("ITEM NOT UPDATED")
+          console.log(`E: `, e)
           cb("LINE_ITEM_NOT_UPDATED")
         } 
       },

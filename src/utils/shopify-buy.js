@@ -6,8 +6,13 @@ const client = Client.buildClient({
 })
 
 export const fetchProductByHandle = async (handle) => {
-  const product = await client.product.fetchByHandle(handle ||  'truths-we-confess-hardcover')
-  return product
+  try {
+    const product = await client.product.fetchByHandle(handle ||  'truths-we-confess-hardcover')
+
+    return product
+  } catch(e) {
+    return e
+  }
 }
 
 export const updateLineItem = async (checkoutId, updatedVariant) => {
@@ -31,15 +36,21 @@ export const updateLineItem = async (checkoutId, updatedVariant) => {
   }
 }
 
-export const addLineItem = async (checkoutId, variantId) => {
+export const addLineItem = async (checkoutId, variantId, customAttributes) => {
   if(!checkoutId || !variantId) {
     throw new Error(`Must include a checkoutId and a variantId`)
   }
 
-  const lineItems = [{
+  let lineItem = {
     variantId,
     quantity: 1
-  }]
+  }
+
+  if(customAttributes) {
+    lineItem.customAttributes = customAttributes
+  }
+
+  const lineItems = [lineItem]
 
   try {
     const cart = await client.checkout.addLineItems(checkoutId, lineItems)
@@ -61,8 +72,6 @@ export const removeLineItem = async (checkoutId, lineItemId) => {
   if(!checkoutId || !lineItemId) {
     throw new Error(`Must include a checkoutId and a lineItemId`)
   }
-
-  console.log(`lineItemId: `, lineItemId)
 
   const lineItems = [lineItemId]
 

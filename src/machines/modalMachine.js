@@ -1,30 +1,25 @@
-import { Machine, sendParent, assign } from "xstate"
+import { Machine, sendParent } from "xstate"
 
-const modalMachine = (id) => Machine(
-  {
-    id: "modal",
-    initial: "idle",
-    context: {
-      id
-    },
-    states: {
-      idle: {
-        on: {
-          REMOVE: {
-            target: "destroy",
-            actions: sendParent("REMOVE")
-          },
-          CANCEL: {
-            target: "destroy",
-            actions: sendParent("CANCEL")
-          }
+const modalMachine = Machine({
+  id: "modal",
+  initial: "idle",
+  states: {
+    idle: {
+      on: {
+        REMOVE: {
+          target: "destroy",
+          actions: sendParent("REMOVE_ITEM")
+        },
+        CANCEL: { 
+          target: "destroy",
+          actions: sendParent("CANCEL_MODAL") 
         }
-      },
-      destroy: {
-        type: `final`
       }
+    },
+    destroy: {
+      type: `final`
     }
   }
-)
+})
 
 export default modalMachine
